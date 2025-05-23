@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Quest コントローラー入力ガイドジェネレーター</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .control-group, .coord-group { margin-bottom: 1rem; }
+        .control-group label, .coord-group label { display: block; margin-bottom: 0.25rem; font-weight: bold; font-size: 0.875rem; }
+        .control-group textarea, .coord-group input[type="number"], .coord-group select, .resolution-group input[type="number"] {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            border: 1px solid #ccc;
+            font-size: 0.875rem;
+        }
+        .control-group textarea { min-height: 60px; line-height: 1.5; }
+        #guideCanvas { border: 1px solid black; background-color: #fff; width: 100%; height: 100%; display: block;}
+        .canvas-container { width: 100%; padding-top: 62.5%; aspect-ratio: 1200 / 750; position: relative; }
+        .canvas-container canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .editor-panel-section { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #eee; }
+        .hidden-by-default { display: none; }
+        .resolution-group { margin-bottom: 1rem; padding: 0.75rem; border: 1px solid #e2e8f0; border-radius: 0.375rem; background-color: #f9fafb;}
+        .resolution-group label { font-size: 0.8rem; margin-right: 0.5rem; }
+        .resolution-group input[type="number"] { width: 80px; text-align: right;}
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="container mx-auto max-w-7xl bg-white shadow-xl rounded-lg p-6">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800">Meta Quest コントローラー入力ガイドジェネレーター</h1>
+            <p class="text-gray-600 mt-2">各ボタンの操作説明を入力し、ガイド画像を生成・ダウンロードします。</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8" id="mainGrid">
+            <div class="md:col-span-1">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">1. 操作説明入力</h2>
+                <div id="inputControls" class="space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto pr-2">
+                    </div>
+            </div>
+
+            <div id="previewColumn" class="md:col-span-2">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">プレビュー</h2>
+                <div class="canvas-container border border-gray-300 rounded">
+                    <canvas id="guideCanvas"></canvas>
+                </div>
+                <div class="mt-4">
+                    <div class="resolution-group">
+                        <h4 class="text-sm font-semibold mb-2 text-gray-600">PNG書き出し解像度:</h4>
+                        <div class="flex items-center justify-start space-x-4">
+                            <div>
+                                <label for="pngWidth" class="block text-xs">幅 (px):</label>
+                                <input type="number" id="pngWidth" value="1200" class="p-1 border rounded">
+                            </div>
+                            <div>
+                                <label for="pngHeight" class="block text-xs">高さ (px):</label>
+                                <input type="number" id="pngHeight" value="750" class="p-1 border rounded">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <button id="downloadPngButton" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-lg transition duration-150 text-sm w-full">
+                            PNGダウンロード
+                        </button>
+                        </div>
+                </div>
+                 <div class="mt-6">
+                    <button id="generateButton" class="bg-blue-600 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-lg transition duration-150 w-full text-lg">
+                        プレビュー更新
+                    </button>
+                </div>
+            </div>
+
+            <div id="editorColumn" class="md:col-span-1 hidden-by-default">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">2. 座標・設定調整</h2>
+                <div class="editor-panel-section">
+                    <h3 class="text-md font-semibold mb-2 text-gray-600">JSON設定ファイル</h3>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <label for="importJsonInput" class="text-xs block mb-1">設定を読込 (.json)</label>
+                            <input type="file" id="importJsonInput" accept=".json" class="text-xs p-1 border rounded w-full">
+                        </div>
+                        <button id="importJsonButton" class="bg-teal-500 hover:bg-teal-700 text-white text-xs font-bold py-2 px-3 rounded self-end">
+                            読込実行
+                        </button>
+                    </div>
+                    <button id="exportJsonButton" class="bg-purple-500 hover:bg-purple-700 text-white text-xs font-bold py-2 px-3 rounded w-full">
+                        現在の設定をJSONで保存
+                    </button>
+                </div>
+
+                <div id="coordinatesEditorPanel" class="space-y-4 max-h-[calc(100vh-450px)] overflow-y-auto pr-2 border-t pt-4">
+                    </div>
+            </div>
+        </div>
+         <footer class="mt-12 text-center text-sm text-gray-500">
+            <p>コントローラー画像: Quest_03.svg (Meta Quest 3 コントローラー)</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- Global Config and Constants ---
+        const controllerImageOriginalWidth = 744;
+        const controllerImageOriginalHeight = 416;
+        const canvasLogicalBaseWidth = 1200; 
+        const canvasLogicalBaseHeight = 750; 
+        const baseAspectRatio = canvasLogicalBaseWidth / canvasLogicalBaseHeight;
+
+        const imgOffsetX = (canvasLogicalBaseWidth - controllerImageOriginalWidth) / 2;
+        const imgOffsetY = 120;
+
+        const iconSize = 20;
+        const iconPadding = 8;
+        const defaultLineColor = '#333333';
+        const defaultIconFillColor = '#555555';
+        const defaultIconStrokeColor = '#333333';
+        const defaultIconTextColor = '#FFFFFF';
+        const textLineHeight = 18;
+
+        let globalSettings = {
+            "textBlockIndent": 180,
+            "controllerSVGPath": "Quest_03.svg",
+            "aButtonSVGPath": "xbox_button_a_black.svg"
+        };
+
+        let buttonsConfig = [
+            { "id": "menuButton", "label": "メニューボタン (左)", "defaultText": "メニュー操作", "iconLabel": "≡", "controllerAttachX": 318, "controllerAttachY": 210, "iconY": 210, "textAlign": "right", "elbowOffset": 100 },
+            { "id": "yButton", "label": "Y ボタン (左)", "defaultText": "Y ボタンの操作", "iconLabel": "Y", "controllerAttachX": 430, "controllerAttachY": 190, "iconY": 165, "textAlign": "right", "elbowOffset": 100 },
+            { "id": "xButton", "label": "X ボタン (左)", "defaultText": "X ボタンの操作", "iconLabel": "X", "controllerAttachX": 390, "controllerAttachY": 240, "iconY": 270, "textAlign": "right", "elbowOffset": 210 },
+            { "id": "lStick", "label": "L スティック (左)", "defaultText": "移動/\nスクロール", "iconLabel": "L", "controllerAttachX": 388, "controllerAttachY": 140, "iconY": 100, "textAlign": "right", "elbowOffset": 100 },
+            { "id": "lIndexTrigger", "label": "L 人差し指トリガー (左)", "defaultText": "選択/\n発射", "iconLabel": "LT", "controllerAttachX": 550, "controllerAttachY": 280, "iconY": 500, "textAlign": "right", "elbowOffset": 370 },
+            { "id": "lGripTrigger", "label": "L 中指トリガー (左)", "defaultText": "掴む/\nホールド", "iconLabel": "LG", "controllerAttachX": 350, "controllerAttachY": 380, "iconY": 450, "textAlign": "right", "elbowOffset": 170 },
+            { "id": "bButton", "label": "B ボタン (右)", "defaultText": "B ボタンの操作", "iconLabel": "B", "controllerAttachX": 770, "controllerAttachY": 190, "iconY": 165, "textAlign": "left", "elbowOffset": -100 },
+            { "id": "aButton", "label": "A ボタン (右)", "defaultText": "A ボタンの操作", "iconLabel": "A", "controllerAttachX": 810, "controllerAttachY": 240, "iconY": 270, "textAlign": "left", "elbowOffset": -210 },
+            { "id": "rStick", "label": "R スティック (右)", "defaultText": "視点変更/\nスクロール", "iconLabel": "R", "controllerAttachX": 810, "controllerAttachY": 140, "iconY": 100, "textAlign": "left", "elbowOffset": -100 },
+            { "id": "rIndexTrigger", "label": "R 人差し指トリガー (右)", "defaultText": "選択/\nアクション", "iconLabel": "RT", "controllerAttachX": 650, "controllerAttachY": 280, "iconY": 500, "textAlign": "left", "elbowOffset": -370 },
+            { "id": "rGripTrigger", "label": "R 中指トリガー (右)", "defaultText": "掴む/\n特殊アクション", "iconLabel": "RG", "controllerAttachX": 850, "controllerAttachY": 380, "iconY": 450, "textAlign": "left", "elbowOffset": -170 }
+        ];
+
+        const inputControlsContainer = document.getElementById('inputControls');
+        const coordinatesEditorPanel = document.getElementById('coordinatesEditorPanel');
+        const editorColumn = document.getElementById('editorColumn');
+        const previewColumn = document.getElementById('previewColumn');
+        const canvas = document.getElementById('guideCanvas');
+        const ctx = canvas.getContext('2d');
+        const pngWidthInput = document.getElementById('pngWidth');
+        const pngHeightInput = document.getElementById('pngHeight');
+        
+        const controllerImg = new Image(); 
+        let controllerSVGImage = null; 
+        const aButtonIcon = new Image(); 
+        let aButtonIconLoaded = false;
+        // SVG strings are no longer strictly needed if not directly used by PDF, but can be kept for future use
+        // let aButtonSVGString = null; 
+        // let controllerSVGString = null;
+
+        // Removed loadSVGString and svgStringToImage as they were primarily for PDF vector export
+        // If SVG is to be rendered directly to canvas, a different approach (e.g., canvg or drawing path by path) would be needed.
+        // For now, relying on PNG fallbacks for canvas preview.
+
+        window.onload = async () => {
+            // controllerSVGString = await loadSVGString(globalSettings.controllerSVGPath); // No longer strictly needed for PNG only
+            // aButtonSVGString = await loadSVGString(globalSettings.aButtonSVGPath); // No longer strictly needed
+
+            // Attempt to load SVG as Image directly for better quality canvas preview if browser supports it well
+            // Otherwise, PNG fallbacks are used.
+            controllerSVGImage = new Image();
+            controllerSVGImage.onload = () => scheduleDrawGuide();
+            controllerSVGImage.onerror = () => { controllerSVGImage = null; scheduleDrawGuide(); }; // Fallback to PNG if SVG direct load fails
+            controllerSVGImage.src = globalSettings.controllerSVGPath;
+            
+            // Fallback PNGs (still useful if direct SVG to Image fails or for A button)
+            controllerImg.src = globalSettings.controllerSVGPath.replace('.svg', '.png'); 
+            aButtonIcon.src = globalSettings.aButtonSVGPath.replace('.svg', '.png');
+
+            initControls(); 
+            initCoordinateEditor();
+            
+            let pngFallbacksLoaded = 0;
+            const totalPngFallbacks = 2; // controllerImg and aButtonIcon
+            function onPngFallbackLoadOrError() {
+                pngFallbacksLoaded++;
+                if (pngFallbacksLoaded >= totalPngFallbacks) { 
+                    scheduleDrawGuide(); // Draw once all fallbacks attempted
+                }
+            }
+            controllerImg.onload = onPngFallbackLoadOrError;
+            controllerImg.onerror = () => { console.error(`Ctrl img PNG fallback error`); onPngFallbackLoadOrError(); };
+            aButtonIcon.onload = () => { aButtonIconLoaded = true; onPngFallbackLoadOrError(); };
+            aButtonIcon.onerror = () => { console.warn(`A button PNG fallback error`); aButtonIconLoaded = false; onPngFallbackLoadOrError(); };
+
+            if (controllerImg.complete && controllerImg.src) onPngFallbackLoadOrError();
+            if (aButtonIcon.complete && aButtonIcon.src) { if(!aButtonIconLoaded && aButtonIcon.naturalWidth > 0) aButtonIconLoaded = true; onPngFallbackLoadOrError(); }
+            
+            document.getElementById('generateButton').addEventListener('click', applyCoordChangesAndDraw);
+            document.getElementById('exportJsonButton').addEventListener('click', exportConfigToJson);
+            document.getElementById('importJsonButton').addEventListener('click', () => document.getElementById('importJsonInput').click());
+            document.getElementById('importJsonInput').addEventListener('change', importConfigFromJson);
+            
+            pngWidthInput.addEventListener('input', () => updateResolution('width'));
+            pngHeightInput.addEventListener('input', () => updateResolution('height'));
+            updateResolution('width'); // Set initial height based on default width
+
+            document.getElementById('downloadPngButton').addEventListener('click', () => downloadCanvasAsPNGWithResolution());
+            // PDF Download Button and its listener are removed.
+
+            window.addEventListener('resize', () => { 
+                resizeCanvasToDisplaySize();
+                scheduleDrawGuide();
+            });
+            window.addEventListener('keydown', (e) => {
+                if (e.key.toLowerCase() === 'j') {
+                    editorColumn.classList.toggle('hidden-by-default');
+                    if (editorColumn.classList.contains('hidden-by-default')) {
+                        previewColumn.classList.remove('md:col-span-1');
+                        previewColumn.classList.add('md:col-span-2');
+                    } else {
+                        previewColumn.classList.remove('md:col-span-2');
+                        previewColumn.classList.add('md:col-span-1');
+                    }
+                    requestAnimationFrame(() => {
+                        resizeCanvasToDisplaySize();
+                        scheduleDrawGuide();
+                    });
+                }
+            });
+            
+            resizeCanvasToDisplaySize(); 
+            recalculateButtonXPositions(); 
+            scheduleDrawGuide(); 
+        };
+
+        function resizeCanvasToDisplaySize() { /* ... (same as before) ... */ }
+        
+        function updateResolution(changedInput) {
+            const widthVal = parseInt(pngWidthInput.value, 10);
+            const heightVal = parseInt(pngHeightInput.value, 10);
+
+            if (changedInput === 'width') {
+                if (!isNaN(widthVal) && widthVal > 0) {
+                    pngHeightInput.value = Math.round(widthVal / baseAspectRatio);
+                } else if (widthVal <= 0) { // If user enters 0 or negative, reset to default aspect ratio based height
+                     pngHeightInput.value = Math.round(parseInt(pngWidthInput.defaultValue,10) / baseAspectRatio);
+                }
+            } else if (changedInput === 'height') {
+                if (!isNaN(heightVal) && heightVal > 0) {
+                    pngWidthInput.value = Math.round(heightVal * baseAspectRatio);
+                } else if (heightVal <=0) {
+                     pngWidthInput.value = Math.round(parseInt(pngHeightInput.defaultValue,10) * baseAspectRatio);
+                }
+            }
+        }
+
+        function applyCoordChangesAndDraw() { /* ... (same as before) ... */ }
+        function recalculateButtonXPositions() { /* ... (same as before) ... */ }
+        let drawScheduled = false;
+        function scheduleDrawGuide() { /* ... (same as before, calls drawGuideForLivePreview) ... */ }
+        function drawGuideForCanvas(targetCanvas, targetCtx, renderWidth, renderHeight) { /* ... (same as before, ensure buttonsConfig.forEach is correctly closed) ... */ }
+        function drawGuideForLivePreview() { /* ... (same as before) ... */ }
+        function downloadCanvasAsPNGWithResolution() { /* ... (same as before) ... */ }
+        // downloadGuideAsPDF and drawFallbackIconPdf are removed.
+        
+        // --- Config Management Functions (initControls, initCoordinateEditor, etc.) ---
+        // These functions are largely the same. Ensure they are complete in your actual file.
+        function initControls() { /* ... (same as before) ... */ }
+        function initCoordinateEditor() { /* ... (same as before) ... */ }
+        function updateButtonConfigFromEditor() { /* ... (same as before) ... */ }
+        function populateEditorFromConfig() { /* ... (same as before) ... */ }
+        function exportConfigToJson() { /* ... (same as before) ... */ }
+        function importConfigFromJson(event) { /* ... (same as before) ... */ }
+
+        // --- Full implementations for brevity in previous response, ensure these are correct ---
+        function resizeCanvasToDisplaySize() {
+            const container = canvas.parentElement;
+            if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) {
+                requestAnimationFrame(resizeCanvasToDisplaySize);
+                return;
+            }
+            const displayWidth = container.offsetWidth;
+            const displayHeight = container.offsetHeight;
+            const dpr = window.devicePixelRatio || 1;
+
+            canvas.width = Math.round(displayWidth * dpr);
+            canvas.height = Math.round(displayHeight * dpr);
+            canvas.style.width = displayWidth + "px";
+            canvas.style.height = displayHeight + "px";
+            
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0); 
+        }
+        function applyCoordChangesAndDraw() { 
+            updateButtonConfigFromEditor();
+            scheduleDrawGuide();
+        }
+        function recalculateButtonXPositions() { 
+            buttonsConfig.forEach(btn => {
+                if (btn.textAlign === 'right') {
+                    btn.iconX = globalSettings.textBlockIndent;
+                    btn.elbowX = btn.iconX + btn.elbowOffset;
+                    btn.textX = btn.iconX - iconSize / 2 - iconPadding;
+                } else { // left
+                    btn.iconX = canvasLogicalBaseWidth - globalSettings.textBlockIndent;
+                    btn.elbowX = btn.iconX + btn.elbowOffset; 
+                    btn.textX = btn.iconX + iconSize / 2 + iconPadding;
+                }
+            });
+        }
+        function scheduleDrawGuide() { 
+            if (!drawScheduled) {
+                drawScheduled = true;
+                requestAnimationFrame(() => {
+                    drawGuideForLivePreview();
+                    drawScheduled = false;
+                });
+            }
+        }
+        function drawGuideForCanvas(targetCanvas, targetCtx, renderWidth, renderHeight) {
+            let scaleFactor;
+            const dpr = (targetCanvas === canvas) ? (window.devicePixelRatio || 1) : 1;
+
+            if (targetCanvas === canvas) { 
+                 scaleFactor = Math.min(renderWidth / canvasLogicalBaseWidth, renderHeight / canvasLogicalBaseHeight);
+            } else { 
+                 scaleFactor = Math.min(targetCanvas.width / canvasLogicalBaseWidth, targetCanvas.height / canvasLogicalBaseHeight);
+            }
+
+            targetCtx.clearRect(0, 0, targetCanvas.width / dpr , targetCanvas.height / dpr);
+            targetCtx.fillStyle = '#FFFFFF';
+            targetCtx.fillRect(0, 0, targetCanvas.width / dpr, targetCanvas.height / dpr);
+            
+            targetCtx.save();
+            
+            const logicalScaledWidth = canvasLogicalBaseWidth * scaleFactor;
+            const logicalScaledHeight = canvasLogicalBaseHeight * scaleFactor;
+            
+            let translateToCenterX, translateToCenterY;
+            if (targetCanvas === canvas) { 
+                translateToCenterX = (renderWidth - logicalScaledWidth) / 2; 
+                translateToCenterY = (renderHeight - logicalScaledHeight) / 2; 
+            } else { 
+                translateToCenterX = (targetCanvas.width - logicalScaledWidth) / 2; 
+                translateToCenterY = (targetCanvas.height - logicalScaledHeight) / 2; 
+            }
+
+            targetCtx.translate(translateToCenterX, translateToCenterY);
+            targetCtx.scale(scaleFactor, scaleFactor);
+
+            targetCtx.fillStyle = defaultLineColor;
+            targetCtx.font = `bold 24px Arial`; 
+            targetCtx.textAlign = 'center';
+            targetCtx.fillText('Meta Quest コントローラー入力ガイド', canvasLogicalBaseWidth / 2, 50);
+
+            const currentControllerImageToDraw = controllerSVGImage && controllerSVGImage.complete && (controllerSVGImage.naturalWidth > 0 || controllerSVGImage.width > 0) ? controllerSVGImage : controllerImg;
+
+
+            if (currentControllerImageToDraw && currentControllerImageToDraw.complete && (currentControllerImageToDraw.naturalWidth > 0 || currentControllerImageToDraw.width > 0) ) {
+                targetCtx.drawImage(currentControllerImageToDraw, imgOffsetX, imgOffsetY, controllerImageOriginalWidth, controllerImageOriginalHeight);
+            } else {
+                targetCtx.fillStyle = '#666';
+                targetCtx.font = `16px Arial`;
+                targetCtx.fillText('コントローラー画像読込中...', canvasLogicalBaseWidth / 2, canvasLogicalBaseHeight / 2 - 10);
+            }
+
+            buttonsConfig.forEach(button => { 
+                const textContent = button.currentText || button.defaultText;
+                const textLines = textContent.split('\n');
+
+                targetCtx.beginPath();
+                targetCtx.moveTo(button.controllerAttachX, button.controllerAttachY);
+                targetCtx.lineTo(button.elbowX, button.controllerAttachY);
+                targetCtx.lineTo(button.elbowX, button.iconY); 
+                targetCtx.lineTo(button.iconX, button.iconY);
+                targetCtx.strokeStyle = defaultLineColor;
+                targetCtx.lineWidth = 1.5; 
+                targetCtx.stroke();
+
+                targetCtx.textAlign = 'center';
+                targetCtx.textBaseline = 'middle';
+                
+                if (button.iconLabel === 'A' && aButtonIconLoaded && aButtonIcon.complete && aButtonIcon.naturalWidth > 0) {
+                    targetCtx.drawImage(aButtonIcon, button.iconX - iconSize / 2, button.iconY - iconSize / 2, iconSize, iconSize);
+                } else { 
+                    targetCtx.beginPath();
+                    targetCtx.arc(button.iconX, button.iconY, iconSize / 2, 0, 2 * Math.PI, false);
+                    targetCtx.fillStyle = defaultIconFillColor;
+                    targetCtx.fill();
+                    targetCtx.strokeStyle = defaultIconStrokeColor;
+                    targetCtx.lineWidth = 1;
+                    targetCtx.stroke();
+                    targetCtx.fillStyle = defaultIconTextColor;
+                    targetCtx.font = `bold ${iconSize * 0.55}px Arial`;
+                    targetCtx.fillText(button.iconLabel, button.iconX, button.iconY);
+                }
+                
+                targetCtx.fillStyle = defaultLineColor;
+                targetCtx.font = `14px Arial`; 
+                targetCtx.textAlign = button.textAlign;
+                
+                textLines.forEach((line, index) => {
+                    let lineY = button.iconY - ((textLines.length - 1) * textLineHeight / 2) + (index * textLineHeight);
+                    if (textLines.length === 1) lineY = button.iconY;
+                    targetCtx.textBaseline = 'middle';
+                    targetCtx.fillText(line, button.textX, lineY);
+                });
+            });
+            targetCtx.restore();
+        }
+        function drawGuideForLivePreview() {
+            recalculateButtonXPositions(); 
+            drawGuideForCanvas(canvas, ctx, canvas.offsetWidth, canvas.offsetHeight);
+        }
+        function downloadCanvasAsPNGWithResolution() {
+            const customWidth = parseInt(pngWidthInput.value, 10);
+            const customHeight = parseInt(pngHeightInput.value, 10);
+
+            if (isNaN(customWidth) || isNaN(customHeight) || customWidth <= 0 || customHeight <= 0) { alert("PNGの幅と高さには有効な正の数値を入力してください。"); return; }
+
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = customWidth; 
+            offscreenCanvas.height = customHeight;
+            const offscreenCtx = offscreenCanvas.getContext('2d');
+            
+            recalculateButtonXPositions(); 
+            drawGuideForCanvas(offscreenCanvas, offscreenCtx, customWidth, customHeight); 
+            
+            const dataURL = offscreenCanvas.toDataURL('image/png');
+            if (!dataURL || dataURL === "data:,") { 
+                console.error("Failed to generate data URL for PNG download.");
+                alert("PNG画像の生成に失敗しました。");
+                return; 
+            }
+            const link = document.createElement('a');
+            link.download = `Quest_Controller_Guide_${customWidth}x${customHeight}.png`;
+            link.href = dataURL;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+        function initControls() {
+            inputControlsContainer.innerHTML = '';
+            buttonsConfig.forEach(button => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'control-group';
+                const labelEl = document.createElement('label');
+                labelEl.htmlFor = `text-${button.id}`;
+                labelEl.textContent = button.label;
+                const textareaEl = document.createElement('textarea');
+                textareaEl.id = `text-${button.id}`;
+                textareaEl.value = button.currentText || button.defaultText;
+                textareaEl.rows = (button.currentText || button.defaultText).split('\n').length || 2;
+                textareaEl.addEventListener('input', () => {
+                    const lines = textareaEl.value.split('\n').length;
+                    textareaEl.rows = Math.max(2, lines);
+                    button.currentText = textareaEl.value; 
+                    scheduleDrawGuide();
+                });
+                if(!button.currentText) button.currentText = button.defaultText;
+                groupDiv.appendChild(labelEl);
+                groupDiv.appendChild(textareaEl);
+                inputControlsContainer.appendChild(groupDiv);
+            });
+        }
+        function initCoordinateEditor() {
+            coordinatesEditorPanel.innerHTML = ''; 
+            const globalGroup = document.createElement('div');
+            globalGroup.className = 'coord-group p-2 border rounded mb-3 bg-gray-50';
+            globalGroup.innerHTML = `<h4 class="font-semibold text-sm mb-2">全体設定:</h4>`;
+            const indentLabel = document.createElement('label');
+            indentLabel.textContent = `テキストブロックインデント:`;
+            indentLabel.htmlFor = `global-textBlockIndent`;
+            const indentInput = document.createElement('input');
+            indentInput.type = 'number';
+            indentInput.id = `global-textBlockIndent`;
+            indentInput.value = globalSettings.textBlockIndent;
+            indentInput.className = 'w-20 ml-2 p-1 border rounded';
+            indentInput.addEventListener('change', () => { 
+                globalSettings.textBlockIndent = parseInt(indentInput.value, 10);
+                recalculateButtonXPositions();
+                scheduleDrawGuide();
+            });
+            const indentDiv = document.createElement('div');
+            indentDiv.appendChild(indentLabel);
+            indentDiv.appendChild(indentInput);
+            globalGroup.appendChild(indentDiv);
+            coordinatesEditorPanel.appendChild(globalGroup);
+
+            buttonsConfig.forEach((button) => {
+                const buttonPanel = document.createElement('div');
+                buttonPanel.className = 'coord-group p-2 border rounded mb-2';
+                buttonPanel.innerHTML = `<h4 class="font-semibold text-sm">${button.label} (ID: ${button.id})</h4>`;
+                const fields = [
+                    { key: 'controllerAttachX', label: '線始点X (Ctrl)' }, { key: 'controllerAttachY', label: '線始点Y (Ctrl)' },
+                    { key: 'iconY', label: 'アイコンY / テキスト基準Y' }, { key: 'elbowOffset', label: '肘オフセットX (アイコンから)' }
+                ];
+                fields.forEach(field => {
+                    const fieldDiv = document.createElement('div');
+                    fieldDiv.className = 'flex justify-between items-center mb-1';
+                    const label = document.createElement('label');
+                    label.textContent = field.label + ':';
+                    label.htmlFor = `coord-${button.id}-${field.key}`;
+                    label.className = 'text-xs';
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.id = `coord-${button.id}-${field.key}`;
+                    input.value = button[field.key];
+                    input.className = 'w-20 p-1 border rounded text-xs';
+                    input.step = 1;
+                    fieldDiv.appendChild(label);
+                    fieldDiv.appendChild(input);
+                    buttonPanel.appendChild(fieldDiv);
+                });
+                coordinatesEditorPanel.appendChild(buttonPanel);
+            });
+        }
+        function updateButtonConfigFromEditor() {
+            const indentInput = document.getElementById(`global-textBlockIndent`);
+            if (indentInput) globalSettings.textBlockIndent = parseInt(indentInput.value, 10);
+            buttonsConfig.forEach(button => {
+                const attachXInput = document.getElementById(`coord-${button.id}-controllerAttachX`);
+                if (attachXInput) button.controllerAttachX = parseInt(attachXInput.value, 10);
+                const attachYInput = document.getElementById(`coord-${button.id}-controllerAttachY`);
+                if (attachYInput) button.controllerAttachY = parseInt(attachYInput.value, 10);
+                const iconYInput = document.getElementById(`coord-${button.id}-iconY`);
+                if (iconYInput) button.iconY = parseInt(iconYInput.value, 10);
+                const elbowOffsetInput = document.getElementById(`coord-${button.id}-elbowOffset`);
+                if (elbowOffsetInput) button.elbowOffset = parseInt(elbowOffsetInput.value, 10);
+            });
+            recalculateButtonXPositions();
+        }
+        function populateEditorFromConfig() {
+            const indentInput = document.getElementById(`global-textBlockIndent`);
+            if (indentInput) indentInput.value = globalSettings.textBlockIndent;
+            buttonsConfig.forEach(button => {
+                const attachXInput = document.getElementById(`coord-${button.id}-controllerAttachX`);
+                if (attachXInput) attachXInput.value = button.controllerAttachX;
+                const attachYInput = document.getElementById(`coord-${button.id}-controllerAttachY`);
+                if (attachYInput) attachYInput.value = button.controllerAttachY;
+                const iconYInput = document.getElementById(`coord-${button.id}-iconY`);
+                if (iconYInput) iconYInput.value = button.iconY;
+                const elbowOffsetInput = document.getElementById(`coord-${button.id}-elbowOffset`);
+                if (elbowOffsetInput) elbowOffsetInput.value = button.elbowOffset;
+                const textInput = document.getElementById(`text-${button.id}`);
+                if (textInput) {
+                    textInput.value = button.currentText || button.defaultText;
+                    textInput.rows = (button.currentText || button.defaultText).split('\n').length || 2;
+                }
+            });
+        }
+        function exportConfigToJson() {
+            updateButtonConfigFromEditor(); 
+            const configToExport = {
+                globalSettings: globalSettings,
+                buttonsConfig: buttonsConfig.map(b => ({ 
+                    id: b.id, label: b.label, defaultText: b.currentText || b.defaultText, iconLabel: b.iconLabel,
+                    controllerAttachX: b.controllerAttachX, controllerAttachY: b.controllerAttachY,
+                    iconY: b.iconY, textAlign: b.textAlign, elbowOffset: b.elbowOffset
+                }))
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(configToExport, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "controller_guide_config.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+        function importConfigFromJson(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.globalSettings && imported.buttonsConfig) {
+                        globalSettings = { ...globalSettings, ...imported.globalSettings };
+                        const importedButtonsMap = new Map(imported.buttonsConfig.map(b => [b.id, b]));
+                        buttonsConfig.forEach(b => {
+                            if (importedButtonsMap.has(b.id)) {
+                                const importedButton = importedButtonsMap.get(b.id);
+                                Object.assign(b, importedButton);
+                                b.currentText = importedButton.defaultText; 
+                            }
+                        });
+                        recalculateButtonXPositions();
+                        populateEditorFromConfig(); 
+                        scheduleDrawGuide();
+                        alert('設定が読み込まれました。');
+                    } else { alert('無効な設定ファイル形式です。'); }
+                } catch (error) {
+                    console.error("Error parsing JSON config:", error);
+                    alert(`設定ファイルの読み込みに失敗しました: ${error.message}`);
+                } finally { event.target.value = null; }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
