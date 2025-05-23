@@ -30,13 +30,13 @@
 <body class="bg-gray-100 p-4 md:p-8">
     <div class="container mx-auto max-w-7xl bg-white shadow-xl rounded-lg p-6">
         <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-gray-800">Meta Quest コントローラー入力ガイドジェネレーター</h1>
+            <h1 class="text-3xl font-bold text-gray-800">Meta Quest 3 コントローラー入力ガイドジェネレーター</h1>
             <p class="text-gray-600 mt-2">各ボタンの操作説明を入力し、ガイド画像を生成・ダウンロードします。</p>
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8" id="mainGrid">
             <div class="md:col-span-1">
-                <h2 class="text-xl font-semibold mb-4 text-gray-700">1. 操作説明入力</h2>
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">操作説明入力</h2>
                 <div id="inputControls" class="space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto pr-2">
                     </div>
             </div>
@@ -74,7 +74,7 @@
             </div>
 
             <div id="editorColumn" class="md:col-span-1 hidden-by-default">
-                <h2 class="text-xl font-semibold mb-4 text-gray-700">2. 座標・設定調整</h2>
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">座標・設定調整</h2>
                 <div class="editor-panel-section">
                     <h3 class="text-md font-semibold mb-2 text-gray-600">JSON設定ファイル</h3>
                     <div class="grid grid-cols-2 gap-2 mb-2">
@@ -349,7 +349,7 @@
             targetCtx.fillStyle = defaultLineColor;
             targetCtx.font = `bold 24px Arial`; 
             targetCtx.textAlign = 'center';
-            targetCtx.fillText('Meta Quest コントローラー入力ガイド', canvasLogicalBaseWidth / 2, 50);
+            // targetCtx.fillText('Meta Quest コントローラー入力ガイド', canvasLogicalBaseWidth / 2, 50);
 
             const currentControllerImageToDraw = controllerSVGImage && controllerSVGImage.complete && (controllerSVGImage.naturalWidth > 0 || controllerSVGImage.width > 0) ? controllerSVGImage : controllerImg;
 
